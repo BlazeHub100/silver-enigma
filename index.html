@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlazeHub - Roblox Script Hub</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts (Kanit & Fira Code) -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: #090c15;
+            color: #e2e8f0;
+            overflow-x: hidden;
+            user-select: none;
+        }
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+        /* Glowing Effects */
+        .cyan-glow {
+            box-shadow: 0 0 25px rgba(6, 182, 212, 0.6), inset 0 0 15px rgba(6, 182, 212, 0.4);
+            border: 2px solid #06b6d4;
+        }
+        .card-glow {
+            box-shadow: 0 0 40px rgba(139, 92, 246, 0.15), 0 0 80px rgba(6, 182, 212, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.25);
+        }
+        .btn-purple-glow {
+            background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+            box-shadow: 0 4px 20px rgba(168, 85, 247, 0.4);
+            transition: all 0.2s ease-in-out;
+        }
+        .btn-purple-glow:active {
+            transform: scale(0.97);
+            box-shadow: 0 2px 10px rgba(168, 85, 247, 0.6);
+        }
+        /* Custom Scrollbar for Script Box */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.5);
+            border-radius: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(168, 85, 247, 0.8);
+        }
+        /* Modal Animation */
+        .modal-backdrop {
+            background-color: rgba(3, 7, 18, 0.85);
+            backdrop-filter: blur(8px);
+        }
+        @keyframes toastIn {
+            from { transform: translateY(100%) scale(0.9); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        .toast-animate {
+            animation: toastIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+
+    <!-- Firebase SDK Modules -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global state variables
+        window.appId = typeof __app_id !== 'undefined' ? __app_id : 'blazehub-script-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "demo-key",
+            authDomain: "demo.firebaseapp.com",
+            projectId: "demo-project",
+            storageBucket: "demo.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:123456"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let clickCounter = 0;
+        let clickTimer = null;
+        let docRef = null;
+
+        // Elements
+        const logoBtn = document.getElementById('secret-logo-btn');
+        const adminModal = document.getElementById('admin-modal');
+        const adminForm = document.getElementById('admin-form');
+        const btnCloseModal = document.getElementById('btn-close-modal');
+        const btnCancelModal = document.getElementById('btn-cancel-modal');
+
+        // Display Elements
+        const displayTitle = document.getElementById('display-title');
+        const displayBadge = document.getElementById('display-badge');
+        const displayDesc = document.getElementById('display-desc');
+        const displayScript = document.getElementById('display-script');
+        const avatarImg = document.getElementById('avatar-img');
+
+        // Form Inputs
+        const inputTitle = document.getElementById('input-title');
+        const inputBadge = document.getElementById('input-badge');
+        const inputDesc = document.getElementById('input-desc');
+        const inputScript = document.getElementById('input-script');
+        const inputAvatar = document.getElementById('input-avatar');
+        const inputWebhook = document.getElementById('input-webhook');
+
+        let currentScriptText = `loadstring(game:HttpGet("https://raw.githubusercontent.com/BlazeHub100/stunning-meme/refs/heads/main/script%20v7.lua"))()`;
+        let discordWebhookUrl = ``;
+
+        // Authenticate User
+        async function authenticateUser() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.warn("Auth warning, falling back to local storage sync:", err);
+            }
+        }
+
+        // Realtime Firestore Subscription
+        function subscribeToData() {
+            const path = `artifacts/${window.appId}/public/data/settings`;
+            docRef = doc(db, 'artifacts', window.appId, 'public', 'data', 'settings', 'main_config');
+
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data.title) displayTitle.textContent = data.title;
+                    if (data.badge) displayBadge.textContent = data.badge;
+                    if (data.desc) displayDesc.textContent = data.desc;
+                    if (data.script) {
+                        currentScriptText = data.script;
+                        displayScript.textContent = data.script;
+                    }
+                    if (data.avatar) avatarImg.src = data.avatar;
+                    if (data.webhookUrl !== undefined) discordWebhookUrl = data.webhookUrl;
+
+                    // Sync inputs for admin
+                    inputTitle.value = data.title || '';
+                    inputBadge.value = data.badge || '';
+                    inputDesc.value = data.desc || '';
+                    inputScript.value = data.script || '';
+                    inputAvatar.value = data.avatar || '';
+                    inputWebhook.value = data.webhookUrl || '';
+                } else {
+                    // Set default initial data if clean
+                    const initialData = {
+                        title: "ของค่าย BlazeHub",
+                        badge: "BlazeHub",
+                        desc: "สคริป 3008 ใช้ คัดลอกไปใส่ได้เลยผมสร้างเองไม่มีคีย์",
+                        script: currentScriptText,
+                        avatar: "https://placehold.co/200x200/090d16/06b6d4?text=BLAZE+HUB",
+                        webhookUrl: ""
+                    };
+                    setDoc(docRef, initialData).catch(console.warn);
+                }
+            }, (error) => {
+                console.warn("Snapshot subscription notice:", error);
+            });
+        }
+
+        // Secret Admin Toggle (Press logo 10 times)
+        logoBtn.addEventListener('click', () => {
+            clickCounter++;
+            clearTimeout(clickTimer);
+            
+            // Show subtle feedback toast near 10 clicks if owner is trying
+            if (clickCounter >= 7 && clickCounter < 10) {
+                showToast(`เหลืออีก ${10 - clickCounter} ครั้งเพื่อเปิดแผงควบคุม`, 'fa-key');
+            }
+
+            if (clickCounter >= 10) {
+                clickCounter = 0;
+                openAdminModal();
+            } else {
+                clickTimer = setTimeout(() => {
+                    clickCounter = 0;
+                }, 3000);
+            }
+        });
+
+        function openAdminModal() {
+            inputTitle.value = displayTitle.textContent;
+            inputBadge.value = displayBadge.textContent;
+            inputDesc.value = displayDesc.textContent;
+            inputScript.value = currentScriptText;
+            inputAvatar.value = avatarImg.src;
+            inputWebhook.value = discordWebhookUrl;
+
+            adminModal.classList.remove('hidden');
+            adminModal.classList.add('flex');
+        }
+
+        function closeAdminModal() {
+            adminModal.classList.add('hidden');
+            adminModal.classList.remove('flex');
+        }
+
+        btnCloseModal.addEventListener('click', closeAdminModal);
+        btnCancelModal.addEventListener('click', closeAdminModal);
+
+        // Toast Helper
+        function showToast(message, iconClass = "fa-check-circle") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            if (!toast || !toastMsg || !toastIcon) return;
+
+            toastMsg.textContent = message;
+            toastIcon.className = `fas ${iconClass} text-xl text-cyan-400`;
+            toast.classList.remove('hidden');
+            toast.classList.add('toast-animate');
+
+            setTimeout(() => {
+                toast.classList.add('hidden');
+                toast.classList.remove('toast-animate');
+            }, 2500);
+        }
+
+        // Discord Webhook Notification Trigger
+        function sendDiscordNotification(scriptCopied) {
+            if (!discordWebhookUrl || !discordWebhookUrl.trim().startsWith('http')) return;
+
+            const timeString = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+            
+            const payload = {
+                username: "BlazeHub Alert System",
+                avatar_url: avatarImg.src || "https://placehold.co/200x200/090d16/06b6d4?text=BLAZE",
+                embeds: [
+                    {
+                        title: "📋 มีคนคัดลอกสคริปต์บนเว็บไซต์!",
+                        color: 43875, // Cyan Color
+                        fields: [
+                            {
+                                name: "🏷️ ชื่อค่าย / สคริปต์",
+                                value: displayTitle.textContent || "BlazeHub",
+                                inline: true
+                            },
+                            {
+                                name: "⏰ เวลาที่คัดลอก",
+                                value: timeString,
+                                inline: true
+                            },
+                            {
+                                name: "📜 โค้ดสคริปต์ที่คัดลอกไป",
+                                value: "```lua\n" + (scriptCopied.length > 300 ? scriptCopied.substring(0, 300) + "..." : scriptCopied) + "\n```"
+                            }
+                        ],
+                        footer: {
+                            text: "BlazeHub Live Notification System"
+                        },
+                        timestamp: new Date().toISOString()
+                    }
+                ]
+            };
+
+            fetch(discordWebhookUrl.trim(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(() => {
+                console.log("Discord notification attempted.");
+            });
+        }
+
+        // Guaranteed Copy Script Functionality (Works on Mobile / Touch / Webviews)
+        async function copyToClipboard(text) {
+            if (!text) {
+                showToast('ไม่มีข้อความสคริปต์ให้คัดลอก', 'fa-exclamation-triangle');
+                return;
+            }
+
+            let success = false;
+
+            // Method 1: Invisible Textarea ExecCommand (Most reliable on mobile browsers)
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                textarea.setSelectionRange(0, 99999);
+                success = document.execCommand('copy');
+                document.body.removeChild(textarea);
+            } catch (e) {
+                success = false;
+            }
+
+            // Method 2: Modern Navigator API Fallback
+            if (!success && navigator.clipboard) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    success = true;
+                } catch (e) {
+                    success = false;
+                }
+            }
+
+            if (success) {
+                showToast('คัดลอกสคริปต์เรียบร้อยแล้ว!');
+                sendDiscordNotification(text);
+            } else {
+                showToast('คัดลอกไม่สำเร็จ โปรดลองกดค้างแล้วคัดลอกเอง', 'fa-exclamation-circle');
+            }
+        }
+
+        // Copy Listeners
+        document.getElementById('btn-copy-main').addEventListener('click', () => copyToClipboard(currentScriptText));
+        document.getElementById('btn-copy-mini').addEventListener('click', () => copyToClipboard(currentScriptText));
+
+        // Form Submit Handler
+        adminForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btnSave = document.getElementById('btn-save');
+            btnSave.disabled = true;
+            btnSave.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>กำลังบันทึก...</span>`;
+
+            const updatedData = {
+                title: inputTitle.value.trim() || 'ของค่าย BlazeHub',
+                badge: inputBadge.value.trim() || 'BlazeHub',
+                desc: inputDesc.value.trim() || '',
+                script: inputScript.value.trim() || '',
+                avatar: inputAvatar.value.trim() || 'https://placehold.co/200x200/090d16/06b6d4?text=BLAZE+HUB',
+                webhookUrl: inputWebhook.value.trim() || '',
+                updatedAt: new Date().toISOString()
+            };
+
+            // Immediate Local Screen Update (Instant response for user)
+            displayTitle.textContent = updatedData.title;
+            displayBadge.textContent = updatedData.badge;
+            displayDesc.textContent = updatedData.desc;
+            currentScriptText = updatedData.script;
+            displayScript.textContent = currentScriptText;
+            if (updatedData.avatar) avatarImg.src = updatedData.avatar;
+            discordWebhookUrl = updatedData.webhookUrl;
+
+            // Close modal & confirm instantly
+            closeAdminModal();
+            showToast('บันทึกข้อมูลและอัปเดตออนไลน์แล้ว!');
+
+            // Save to Firestore Database in background
+            try {
+                if (docRef) {
+                    await setDoc(docRef, updatedData, { merge: true });
+                }
+            } catch (err) {
+                console.warn("Saved locally, cloud sync error:", err);
+            } finally {
+                btnSave.disabled = false;
+                btnSave.innerHTML = `<i class="fas fa-save"></i> <span>บันทึกการเปลี่ยนแปลง</span>`;
+            }
+        });
+
+        // App Initialization
+        window.onload = async () => {
+            await authenticateUser();
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    subscribeToData();
+                }
+            });
+        };
+    </script>
+</head>
+<body class="min-h-screen flex flex-col justify-between items-center p-4 relative">
+
+    <!-- Top Left Header (Logo Only - Secret Admin Trigger) -->
+    <header class="w-full max-w-5xl flex items-center justify-between pt-2 px-2 z-20">
+        <button id="secret-logo-btn" class="flex items-center gap-3 focus:outline-none group cursor-pointer active:scale-95 transition-transform" title="BlazeHub">
+            <div class="w-10 h-10 rounded-xl bg-purple-900/60 border border-purple-500/40 flex items-center justify-center text-purple-400 group-hover:border-purple-400 transition-colors shadow-lg">
+                <i class="fas fa-fire text-lg text-purple-400 group-hover:text-purple-300"></i>
+            </div>
+            <span class="font-semibold text-lg tracking-wide text-slate-200 group-hover:text-white">BlazeHub</span>
+        </button>
+
+        <!-- Live Sync Status -->
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 text-xs text-slate-400">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span>เรียลไทม์พร้อมใช้งาน</span>
+        </div>
+    </header>
+
+    <!-- Main Content Hub Container -->
+    <main class="w-full my-auto flex justify-center items-center py-6 z-10">
+        <div class="w-full max-w-md bg-slate-950/80 backdrop-blur-xl rounded-3xl p-6 card-glow flex flex-col items-center text-center relative overflow-hidden">
+            
+            <!-- Glow Background Accent -->
+            <div class="absolute -top-20 -left-20 w-40 h-40 bg-purple-600/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-20 -right-20 w-40 h-40 bg-cyan-600/20 rounded-full blur-3xl pointer-events-none"></div>
+
+            <!-- Profile / Hub Avatar with Cyan Circle Glow -->
+            <div class="relative mt-2 mb-4">
+                <div class="w-28 h-28 rounded-full cyan-glow p-1 bg-slate-950 flex items-center justify-center relative overflow-hidden">
+                    <img id="avatar-img" src="https://placehold.co/200x200/090d16/06b6d4?text=BLAZE+HUB" alt="BlazeHub Avatar" class="w-full h-full object-cover rounded-full">
+                </div>
+                <!-- Verified Check Badge -->
+                <div class="absolute bottom-1 right-1 w-7 h-7 bg-purple-600 text-white rounded-full flex items-center justify-center border-2 border-slate-950 text-xs shadow-md">
+                    <i class="fas fa-check"></i>
+                </div>
+            </div>
+
+            <!-- Badge Category -->
+            <div class="mb-3">
+                <span id="display-badge" class="px-4 py-1 rounded-full text-xs font-medium bg-purple-950/80 border border-purple-600/40 text-purple-300">
+                    BlazeHub
+                </span>
+            </div>
+
+            <!-- Hub Main Title -->
+            <h1 id="display-title" class="text-2xl font-bold text-white mb-1 tracking-wide">
+                ของค่าย BlazeHub
+            </h1>
+
+            <!-- Description Text -->
+            <p id="display-desc" class="text-sm text-slate-400 mb-6 font-light max-w-xs leading-relaxed">
+                สคริป 3008 ใช้ คัดลอกไปใส่ได้เลยผมสร้างเองไม่มีคีย์
+            </p>
+
+            <!-- Script Code Container -->
+            <div class="w-full bg-slate-900/90 border border-purple-950/60 rounded-2xl p-3.5 mb-5 text-left relative group">
+                <!-- Header of Script Box -->
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80 text-xs text-slate-400">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                        <span class="font-medium tracking-wider text-slate-300">SCRIPT</span>
+                    </div>
+                    <button id="btn-copy-mini" class="text-slate-400 hover:text-purple-300 flex items-center gap-1.5 transition-colors px-2 py-0.5 rounded hover:bg-purple-900/40">
+                        <i class="far fa-copy text-xs"></i>
+                        <span>คัดลอกผ่าน</span>
+                    </button>
+                </div>
+
+                <!-- Code Block Area -->
+                <div class="overflow-x-auto custom-scroll max-h-36 py-1">
+                    <pre id="display-script" class="code-font text-xs text-purple-200/90 whitespace-pre-wrap break-all leading-relaxed">loadstring(game:HttpGet("https://raw.githubusercontent.com/BlazeHub100/stunning-meme/refs/heads/main/script%20v7.lua"))()</pre>
+                </div>
+            </div>
+
+            <!-- Main Big Copy Button -->
+            <button id="btn-copy-main" class="w-full py-3.5 px-6 rounded-2xl btn-purple-glow text-white font-semibold flex items-center justify-center gap-2 text-base tracking-wide cursor-pointer">
+                <i class="far fa-clipboard text-lg"></i>
+                <span>คัดลอกสคริปต์</span>
+            </button>
+
+            <!-- Footer Small Tag -->
+            <div class="mt-6 text-xs text-slate-500 tracking-widest uppercase flex items-center gap-2">
+                <span>✦ BLAZEHUB</span>
+                <span>•</span>
+                <span>CLOUD STORAGE ACTIVE ✦</span>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Hidden Admin Edit Modal -->
+    <div id="admin-modal" class="fixed inset-0 z-50 modal-backdrop hidden items-center justify-center p-4">
+        <div class="w-full max-w-lg bg-slate-900 border border-purple-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col">
+            
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+                <div class="flex items-center gap-2 text-purple-400 font-bold text-lg">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>โหมดจัดการแก้ไขเว็บไซต์ (Admin)</span>
+                </div>
+                <button id="btn-close-modal" class="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Modal Form Scrollable Content -->
+            <form id="admin-form" class="space-y-4 overflow-y-auto custom-scroll pr-1">
+                <!-- Title Field -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">ชื่อหัวข้อหลัก (Title)</label>
+                    <input type="text" id="input-title" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500" placeholder="เช่น ของค่าย BlazeHub">
+                </div>
+
+                <!-- Badge Tag Field -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">ข้อความแท็กหมวดหมู่ (Badge)</label>
+                    <input type="text" id="input-badge" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500" placeholder="เช่น BlazeHub">
+                </div>
+
+                <!-- Description Field -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">คำอธิบายรายละเอียด (Description)</label>
+                    <textarea id="input-desc" rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500" placeholder="รายละเอียดสคริปต์..."></textarea>
+                </div>
+
+                <!-- Script Code Field -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">โค้ดสคริปต์ (Script Code / Lua)</label>
+                    <textarea id="input-script" rows="4" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs code-font text-purple-300 focus:outline-none focus:border-purple-500" placeholder="loadstring(...)()"></textarea>
+                </div>
+
+                <!-- Avatar Image URL Field -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">ลิงก์รูปภาพวงกลม (Avatar Image URL)</label>
+                    <input type="text" id="input-avatar" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500" placeholder="https://...">
+                </div>
+
+                <!-- Discord Webhook URL Field -->
+                <div class="pt-2 border-t border-slate-800">
+                    <label class="block text-xs font-medium text-indigo-400 mb-1">
+                        <i class="fab fa-discord mr-1"></i> Discord Webhook URL (แจ้งเตือนเมื่อมีคนกดคัดลอก)
+                    </label>
+                    <input type="text" id="input-webhook" class="w-full bg-slate-950 border border-indigo-900/50 rounded-xl px-3.5 py-2.5 text-xs text-indigo-200 focus:outline-none focus:border-indigo-500" placeholder="https://discord.com/api/webhooks/...">
+                    <p class="text-[11px] text-slate-500 mt-1">ใสลิงก์ Webhook จากห้องดิสคอร์ดของคุณเพื่อรับข้อความแจ้งเตือนอัตโนมัติ</p>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="pt-4 flex gap-3">
+                    <button type="button" id="btn-cancel-modal" class="w-1/3 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-medium text-sm hover:bg-slate-700">ยกเลิก</button>
+                    <button type="submit" id="btn-save" class="w-2/3 py-2.5 rounded-xl btn-purple-glow text-white font-medium text-sm flex items-center justify-center gap-2">
+                        <i class="fas fa-save"></i>
+                        <span>บันทึกการเปลี่ยนแปลง</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 z-50 hidden">
+        <div class="bg-slate-900/95 border border-cyan-500/40 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md">
+            <i id="toast-icon" class="fas fa-check-circle text-xl text-cyan-400"></i>
+            <span id="toast-message" class="text-sm font-medium">ทำรายการเรียบร้อยแล้ว</span>
+        </div>
+    </div>
+
+</body>
+</html>
